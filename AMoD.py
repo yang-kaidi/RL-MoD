@@ -51,7 +51,7 @@ class AMoD:
             self.servedDemand[i,j] = defaultdict(float)
         # observation: current vehicle distribution, future arrivals, demand
         # TODO: define states here
-        self.obs = np.array([self.acc[i][t] if tt ==t else self.dacc[i][t] for tt in range(t,t+self.T) for n in self.G])
+        self.obs = np.array([self.acc[i][t] if tt ==t else self.dacc[i][t] for tt in range(t,t+self.T) for i in self.G])
         self.nact = len(self.edges) # number of actions
         self.nobs = len(self.G) * self.T + len(self.demand) * self.T # number of observations
 
@@ -69,11 +69,12 @@ class AMoD:
             if (i,j) not in self.G.edges:
                 continue
             # update the number of vehicles
-            self.acc[i][t+1] += self.paxFlow[i,j][t] + self.rebFlow[i,j][t] - action[k]
+            self.acc[j][t+1] += self.paxFlow[i,j][t] + self.rebFlow[i,j][t]
+            self.acc[i][t+1] -= action[k]
             self.paxFlow[i,j][t+self.G.edges[i,j]['time']] = min([self.demand[i,j][t],action[k]])
             self.rebFlow[i,j][t+self.G.edges[i,j]['time']] = action[k] - min([self.demand[i,j][t],action[k]])
-            self.dacc[i][t+self.G.edges[i,j]['time']] += self.paxFlow[i,j][t+self.G.edges[i,j]['time']]
-            self.dacc[i][t+self.G.edges[i,j]['time']] += self.rebFlow[i,j][t+self.G.edges[i,j]['time']]
+            self.dacc[j][t+self.G.edges[i,j]['time']] += self.paxFlow[i,j][t+self.G.edges[i,j]['time']]
+            self.dacc[j][t+self.G.edges[i,j]['time']] += self.rebFlow[i,j][t+self.G.edges[i,j]['time']]
             
             # TODO: define reward here
             # defining the reward as: price * served demand - cost of rebalancing - cost of serving the demand
