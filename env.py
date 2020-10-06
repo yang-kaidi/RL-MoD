@@ -433,7 +433,7 @@ if __name__=='__main__':
     while(not done):
         print(env1.time)   
         rebAction = [0 for i,j in env1.edges]
-        obs, reward, done = env1.step(rebAction)
+        obs, reward, done, info = env1.step(rebAction)
         opt_rew1.append(reward) 
     
     env2 = AMoD(scenario, 0.2)
@@ -445,7 +445,7 @@ if __name__=='__main__':
         rebAction = [0 for i,j in env2.edges]
         
         paxAction, rebAction = env2.MPC()    
-        obs, reward, done = env2.step(rebAction, paxAction)
+        obs, reward, done, info = env2.step(rebAction, paxAction)
         # obs, reward, done = env2.step(rebAction)
         opt_rew2.append(reward) 
     

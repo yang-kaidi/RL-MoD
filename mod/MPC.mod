@@ -60,7 +60,7 @@ int tt[edge] = [<i,j>:t|<i,j,t> in edgeAttr];
 dvar float+ demandFlow[edge][t0..tf-1];
 dvar float+ rebFlow[edge][t0..tf-1];
 dvar float+ acc[region][t0..tf];
-maximize(sum(e in demandEdge) demandFlow[<e.i,e.j>][e.t]*price[e] - beta * sum(e in edge,t in t0..tf-1)(rebFlow[e][t])*tt[e]);
+maximize(sum(e in demandEdge) demandFlow[<e.i,e.j>][e.t]*price[e] - beta * sum(e in edge,t in t0..tf-1)(rebFlow[e][t]+demandFlow[e][t])*tt[e]);
 subject to
 {
   forall(t in t0..tf-1)
