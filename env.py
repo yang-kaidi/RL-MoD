@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Wed Aug  5 22:09:46 2020
-
 @author: yangk
 """
 from collections import defaultdict
@@ -86,12 +85,13 @@ class CascadedQLearning():
                 x_left += raw_s[cell][t]
             for cell in self.cascaded_regions[list_regions[i+1]]:
                 x_right += raw_s[cell][t]
-            try:
+            if x_left==x_right==0.:
+#                 print(f"lambda, xl {x_left}, xr {x_right}")
+                s.append("lambda")
+            else:
                 v_left = min(np.linspace(0, 1, self.Ms), key=lambda x:abs(x - (x_left / (x_left + x_right))))
                 v_right = 1 - v_left
                 s.append((k, v_left, v_right))
-            except:
-                s.append("lambda")
         return s
     
     def encode_state(self, s):
@@ -126,12 +126,99 @@ class CascadedQLearning():
         """
         return np.sum([self.env.acc[region][self.env.time] for region in self.env.region])
     
+    def policy(self, obs, params, train=True, isMatching=False, CPLEXPATH=None, res_path=None):
+        """
+        Apply the current policy.
+        
+        Parameters
+        ----------
+        params : dict
+            Training settings for cascaded learning.
+        
+        Returns
+        -------
+        action: list
+            List of action indexes for each Q-table in the cascade. 
+            
+        # STEP 1 - Select desired distribution of idle vehicles through RL
+        # 1.1 Pick actions for all Q tables with the following logic:
+        # (i) If Q table under training: either epsilon greedy or max_Q
+        # (ii) for all untrained Q tables select default action (.5, .5)
+        # (iii) for all trained Q tables select argmax action argmax Q(:, a)
+        """
+        num_nodes = len(self.nodes)
+        action_rl = [] # RL action for all nodes
+        if train: # Allow for epsilon-greedy exploration during training
+            training_round_len = params["training_round_len"]
+            epsilon = params["epsilon"]
+            k = params["k"]
+            default_action = params["default_action"]
+            idx = (k//training_round_len)%num_nodes # Q table index (initially, top-most node)
+            for i in range(num_nodes):
+                state_i = self.encode_state(self.decode_state(obs[0], obs[1])[i])
+                if i==idx:
+                    if np.random.rand() < epsilon: # Epsilon-greedy policy for current policy
+                        action_rl.append(np.random.randint(low=0, high=self.nA))
+                    else: # Apply current policy
+                        action_rl.append(np.argmax(self.Q[self.nodes[i]][state_i, :]))
+                else: # for all other nodes, select either default action or take argmax Q(:,a) 
+                    if (k//(training_round_len*num_nodes) < 1) and (k//100 < i):
+                        action_rl.append(default_action)
+                    else:
+                        action_rl.append(np.argmax(self.Q[self.nodes[i]][state_i, :]))
+        else: # At test time, simply use the learnt argmax policy
+            for i in range(num_nodes):
+                state_i = self.encode_state(self.decode_state(obs[0], obs[1])[i])
+                action_rl.append(np.argmax(self.Q[self.nodes[i]][state_i, :]))
+        # 1.2 get actual vehicle distributions vi (i.e. (x1*x2*..*xn)*num_vehicles)
+        v_d = self.get_desired_distribution(action_rl)
 
+        # 1.3 Solve ILP - Minimal Distance Problem 
+        # 1.3.1 collect inputs and build .dat file
+        t = self.env.time
+        accTuple = [(n,int(self.env.acc[n][t])) for n in self.env.acc]
+        accRLTuple = [(n, int(v_d_n)) for n, v_d_n in enumerate(v_d)]
+        edgeAttr = [(i,j,self.env.G.edges[i,j]['time']) for i,j in self.env.G.edges]
+        modPath = os.getcwd().replace('\\','/')+'/mod/'
+        OPTPath = os.getcwd().replace('\\','/')+'/OPT/CQL/'+res_path
+        if not os.path.exists(OPTPath):
+            os.makedirs(OPTPath)
+        datafile = OPTPath + f'data_{t}.dat'
+        resfile = OPTPath + f'res_{t}.dat'
+        with open(datafile,'w') as file:
+            file.write('path="'+resfile+'";\r\n')
+            file.write('edgeAttr='+mat2str(edgeAttr)+';\r\n')
+            file.write('accInitTuple='+mat2str(accTuple)+';\r\n')
+            file.write('accRLTuple='+mat2str(accRLTuple)+';\r\n')
 
+        # 2. execute .mod file and write result on file
+        modfile = modPath+'minRebDistRebOnly.mod'
+        if CPLEXPATH is None:
+            CPLEXPATH = "/opt/ibm/ILOG/CPLEX_Studio128/opl/bin/x86-64_linux/"
+        my_env = os.environ.copy()
+        my_env["LD_LIBRARY_PATH"] = CPLEXPATH
+        out_file =  OPTPath + f'out_{t}.dat'
+        with open(out_file,'w') as output_f:
+            subprocess.check_call([CPLEXPATH+"oplrun", modfile, datafile], stdout=output_f, env=my_env)
+        output_f.close()
+
+        # 3. collect results from file
+        flow = defaultdict(float)
+        with open(resfile,'r', encoding="utf8") as file:
+            for row in file:
+                item = row.strip().strip(';').split('=')
+                if item[0] == 'flow':
+                    values = item[1].strip(')]').strip('[(').split(')(')
+                    for v in values:
+                        if len(v) == 0:
+                            continue
+                        i,j,f = v.split(',')
+                        flow[int(i),int(j)] = float(f)
+        action = [flow[i,j] for i,j in self.env.edges]
+        return action, action_rl
 
 class AMoD:
     # initialization
-        
     def __init__(self, scenario, beta=0.2): # updated to take scenario and beta (cost for rebalancing) as input
         self.scenario = scenario    
         self.G = scenario.G # Road Graph: node - region, edge - connection of regions, node attr: 'accInit', edge attr: 'time'
@@ -170,17 +257,15 @@ class AMoD:
         self.N = len(self.region) # total number of cells
 
         # observation: current vehicle distribution, future arrivals, demand
-								  
         self.obs = (self.acc, self.time)
-													   
-																							 
-    def matching(self):
+
+    def matching(self, CPLEXPATH=None, PATH=None):
         t = self.time
         demandAttr = [(i,j,self.demand[i,j][t], self.price[i,j][t]) for i,j in self.demand \
                       if self.demand[i,j][t]>1e-3]
         accTuple = [(n,self.acc[n][t+1]) for n in self.acc]
         modPath = os.getcwd().replace('\\','/')+'/mod/'
-        matchingPath = os.getcwd().replace('\\','/')+'/matching/'
+        matchingPath = os.getcwd().replace('\\','/')+'/matching/'+PATH
         if not os.path.exists(matchingPath):
             os.makedirs(matchingPath)
         datafile = matchingPath + 'data_{}.dat'.format(t)
@@ -190,7 +275,8 @@ class AMoD:
             file.write('demandAttr='+mat2str(demandAttr)+';\r\n')
             file.write('accInitTuple='+mat2str(accTuple)+';\r\n')
         modfile = modPath+'matching.mod'
-        CPLEXPATH = "C:/Program Files/ibm/ILOG/CPLEX_Studio1210/opl/bin/x64_win64/"
+        if CPLEXPATH is None:
+            CPLEXPATH = "C:/Program Files/ibm/ILOG/CPLEX_Studio1210/opl/bin/x64_win64/"
         my_env = os.environ.copy()
         my_env["LD_LIBRARY_PATH"] = CPLEXPATH
         out_file =  matchingPath + 'out_{}.dat'.format(t)
@@ -205,17 +291,17 @@ class AMoD:
                     values = item[1].strip(')]').strip('[(').split(')(')
                     for v in values:
                         if len(v) == 0:
-                           continue
+                            continue
                         i,j,f = v.split(',')
                         flow[int(i),int(j)] = float(f)
         paxAction = [flow[i,j] if (i,j) in flow else 0 for i,j in self.edges]
         return paxAction
 
     # simulation step
-    def step(self, action, isMatching = False): 
+    def step(self, action, isMatching = False, CPLEXPATH=None, PATH=None): 
         # rebAction/paxAction: np.array, where the kth element represents the number of vehicles going from region i to region j, (i,j) = self.edges[k]
         # paxAction is None if not provided (default matching algorithm will be used)
-        self.info = dict.fromkeys(['revenue', 'served_demand', 'rebalancing_cost'], 0)
+        self.info = dict.fromkeys(['revenue', 'served_demand', 'rebalancing_cost', 'operating_cost'], 0)
         t = self.time
         reward = 0
         
@@ -228,7 +314,6 @@ class AMoD:
                 i,j = self.edges[k] 
                 if (i,j) not in self.G.edges:
                     continue
-                   
                 paxAction[k] = min([self.demand[i,j][t], action[k]])
                 rebAction[k] = action[k] - paxAction[k] 
         else:
@@ -251,7 +336,7 @@ class AMoD:
             self.info['rebalancing_cost'] += self.G.edges[i,j]['time']*self.beta*rebAction[k]
             
         if isMatching:  # default matching algorithm used if isMatching is True, matching method will need the information of self.acc[t+1], therefore this part cannot be put forward
-            paxAction = self.matching()
+            paxAction = self.matching(CPLEXPATH=CPLEXPATH, PATH=PATH)
         self.paxAction = paxAction
         # serving passengers
         for k in range(len(self.edges)):
@@ -280,14 +365,13 @@ class AMoD:
             # TODO: define reward here
             # defining the reward as: price * served demand - cost of rebalancing
             reward += (paxAction[k]*self.price[i,j][t] - self.G.edges[i,j]['time']*self.beta*(rebAction[k]+paxAction[k]))
- 
+            self.info["revenue"] += paxAction[k]*self.price[i,j][t]
+            self.info["operating_cost"] += self.G.edges[i,j]['time']*self.beta*(rebAction[k]+paxAction[k])
         # observation: current vehicle distribution - for now, no notion of demand
         # TODO: define states here
         self.time += 1          
         self.obs = (self.acc, self.time)
-																									
         done = (self.tf == t+1) # if the episode is completed
-								
         return self.obs, max(reward,0), done, self.info
     
     def reset(self):
@@ -323,7 +407,7 @@ class AMoD:
         self.obs = (self.acc, self.time)      
         return self.obs
     
-    def MPC_exact(self):
+    def MPC_exact(self, CPLEXPATH=None):
         t = self.time
         demandAttr = [(i,j,tt,self.demand[i,j][tt], self.price[i,j][tt]) for i,j in self.demand for tt in range(t,t+self.T) if self.demand[i,j][tt]>1e-3]
         accTuple = [(n,self.acc[n][t]) for n in self.acc]
@@ -346,7 +430,8 @@ class AMoD:
             file.write('daccAttr='+mat2str(daccTuple)+';\r\n')
             
         modfile = modPath+'MPC.mod'
-        CPLEXPATH = "C:/Program Files/ibm/ILOG/CPLEX_Studio1210/opl/bin/x64_win64/"
+        if CPLEXPATH is None:
+            CPLEXPATH = "C:/Program Files/ibm/ILOG/CPLEX_Studio1210/opl/bin/x64_win64/"
         my_env = os.environ.copy()
         my_env["LD_LIBRARY_PATH"] = CPLEXPATH
         out_file =  MPCPath + 'out_{}.dat'.format(t)
@@ -362,7 +447,7 @@ class AMoD:
                     values = item[1].strip(')]').strip('[(').split(')(')
                     for v in values:
                         if len(v) == 0:
-                           continue
+                            continue
                         i,j,f1,f2 = v.split(',')
                         paxFlow[int(i),int(j)] = float(f1)
                         rebFlow[int(i),int(j)] = float(f2)
@@ -401,7 +486,7 @@ class Scenario:
             self.tripAttr = deepcopy(tripAttr)
         else:
             self.tripAttr = self.get_random_demand() # randomly generated demand
-           
+    
     def get_random_demand(self, reset = False):        
         # generate demand and price
         # reset = True means that the function is called in the reset() method of AMoD enviroment,
@@ -501,4 +586,3 @@ if __name__=='__main__':
         obs, reward, done, info = env2.step(action)
         served2 += info['served_demand']
         opt_rew2.append(reward) 
-    
