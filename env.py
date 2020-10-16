@@ -345,6 +345,8 @@ class AMoD:
                 continue
             self.servedDemand[i,j][t] = paxAction[k]
             self.paxFlow[i,j][t+self.G.edges[i,j]['time']] = paxAction[k]
+            if self.acc[i][t+1] - self.paxAction[k] < 0:
+                self.paxAction[k] = self.acc[i][t+1]
             self.acc[i][t+1] -= paxAction[k]
             self.info['served_demand'] += self.servedDemand[i,j][t]
             
