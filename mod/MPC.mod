@@ -69,6 +69,7 @@ subject to
     {  
     	acc[i][t+1] == acc[i][t] - sum(e in edge: e.i==i)(demandFlow[e][t] + rebFlow[e][t]) 
       			+ sum(e in edge: e.j==i && t-tt[e]>=t0)(demandFlow[e][t-tt[e]] + rebFlow[e][t-tt[e]]) + dacc[i][t];
+		sum(e in edge: e.i==i)(demandFlow[e][t]+ rebFlow[e][t]) <= acc[i][t];
       	if(t == t0)
       		acc[i][t] == accInit[i];
  	}  	    
