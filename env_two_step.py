@@ -308,6 +308,7 @@ class AMoD:
         self.info['served_demand'] = 0 # initialize served demand
         self.info["operating_cost"] = 0 # initialize operating cost
         self.info['revenue'] = 0
+        self.info['rebalancing_cost'] = 0
         if paxAction is None:  # default matching algorithm used if isMatching is True, matching method will need the information of self.acc[t+1], therefore this part cannot be put forward
             paxAction = self.matching(CPLEXPATH=CPLEXPATH, PATH=PATH)
         self.paxAction = paxAction
@@ -364,7 +365,7 @@ class AMoD:
         self.obs = (self.acc, self.time, self.dacc, self.demand) # use self.time to index the next time step
         
         done = (self.tf == t+1) # if the episode is completed
-        return self.obs, reward, done, self.info
+        return self.obs, self.reward, done, self.info
             
             
     # # simulation step
