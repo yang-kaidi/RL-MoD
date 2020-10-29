@@ -303,6 +303,7 @@ class AMoD:
     # pax step
     def pax_step(self, paxAction=None, CPLEXPATH=None, PATH=''):
         t = self.time
+        self.reward = 0
         for i in self.region:
             self.acc[i][t+1] = self.acc[i][t]
         self.info['served_demand'] = 0 # initialize served demand
@@ -326,7 +327,7 @@ class AMoD:
             self.info['served_demand'] += self.servedDemand[i,j][t]            
             self.dacc[j][t+self.G.edges[i,j]['time']] += self.paxFlow[i,j][t+self.G.edges[i,j]['time']]
             self.reward += self.paxAction[k]*(self.price[i,j][t] - self.G.edges[i,j]['time']*self.beta)            
-            self.info['revenue'] += self.paxAction[k]*(self.price[i,j][t] - self.G.edges[i,j]['time']*self.beta)  
+            self.info['revenue'] += self.paxAction[k]*(self.price[i,j][t])  
         
         self.obs = (self.acc, self.time, self.dacc, self.demand) # for acc, the time index would be t+1, but for demand, the time index would be t
         done = False # if passenger matching is executed first
