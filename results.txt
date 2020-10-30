@@ -1,5 +1,0 @@
-scenario,method, served demand,rebalancing cost,revenue,reward
-scenario 1,matching only, 536.0,0.0,0,3808.881312390762
-scenario 1,MPC, 746.0,29.599999999999994,0,5286.017500626654
-scenario 2,matching only, 290.0,0.0,0,1469.453092392577
-scenario 2,MPC, 521.0,131.6,0,2974.1829736990135
