@@ -247,7 +247,7 @@ class AMoD:
     
 class Scenario:
     def __init__(self, N1=2, N2=4, tf=60, T=10, sd=None, ninit=5, tripAttr=None, demand_input=None,
-                 trip_length_preference = 0.25, grid_travel_time = 1):
+                 trip_length_preference = 0.25, grid_travel_time = 1, fix_price=False):
         # trip_length_preference: positive - more shorter trips, negative - more longer trips
         # grid_travel_time: travel time between grids
         # demand_input： list - total demand out of each region, 
@@ -258,6 +258,7 @@ class Scenario:
         self.trip_length_preference = trip_length_preference
         self.grid_travel_time = grid_travel_time
         self.demand_input = demand_input
+        self.fix_price = fix_price
         self.N1 = N1
         self.N2 = N2
         self.G = nx.complete_graph(N1*N2)
@@ -270,6 +271,11 @@ class Scenario:
         self.sd = sd
         if sd != None:
             np.random.seed(self.sd)
+        if self.fix_price: # fix price
+            self.p = defaultdict(dict)
+            for i,j in self.G.edges:
+                np.random.seed(self.sd)
+                self.p[i,j] = min(3,np.random.exponential(2)+1)*self.G.edges[i,j]['time']
         self.T = T
         if tripAttr != None: # given demand as a defaultdict(dict)
             self.tripAttr = deepcopy(tripAttr)
@@ -336,14 +342,18 @@ class Scenario:
                 raise Exception("demand_input should be number, array-like, or dictionary-like values")
         
         # generating demand and prices
-        for t in range(0,self.tf+self.T):
-            for i,j in self.G.edges:
+        if self.fix_price:
+            p = self.p
+        for i,j in self.G.edges:
+            for t in range(0,self.tf+self.T):
                 demand[i,j][t] = np.random.poisson(self.static_demand[i,j])
-                price[i,j][t] = min(3,np.random.exponential(2)+1) * self.G.edges[i,j]['time']
+                if self.fix_price:
+                    price[i,j][t] = p[i,j]
+                else:
+                    price[i,j][t] = min(3,np.random.exponential(2)+1)*self.G.edges[i,j]['time']
                 tripAttr.append((i,j,t,demand[i,j][t],price[i,j][t]))
-        
+
         return tripAttr
-    
                 
 if __name__=='__main__':
     # for training, put scenario inside the loop, for testing, put scenarios outside the loop and define sd
