@@ -13,7 +13,7 @@ from copy import deepcopy
 
 class AMoD:
     # initialization
-    def __init__(self, scenario, beta=0.2): # updated to take scenario and beta (cost for rebalancing) as input
+    def __init__(self, scenario, beta=0.2): # updated to take scenario and beta (cost for rebalancing) as input 
         self.scenario = deepcopy(scenario) # I changed it to deep copy so that the scenario input is not modified by env 
         self.G = scenario.G # Road Graph: node - region, edge - connection of regions, node attr: 'accInit', edge attr: 'time'
         self.time = 0 # current time
@@ -56,7 +56,7 @@ class AMoD:
         # observation: current vehicle distribution, time, future arrivals, demand        
         self.obs = (self.acc, self.time, self.dacc, self.demand)
 
-    def matching(self, CPLEXPATH=None, PATH=''):
+    def matching(self, CPLEXPATH=None, PATH='', platform = 'linux'):
         t = self.time
         demandAttr = [(i,j,self.demand[i,j][t], self.price[i,j][t]) for i,j in self.demand \
                       if self.demand[i,j][t]>1e-3]
@@ -75,7 +75,10 @@ class AMoD:
         if CPLEXPATH is None:
             CPLEXPATH = "C:/Program Files/ibm/ILOG/CPLEX_Studio1210/opl/bin/x64_win64/"
         my_env = os.environ.copy()
-        my_env["LD_LIBRARY_PATH"] = CPLEXPATH
+        if platform == 'mac':
+            my_env["DYLD_LIBRARY_PATH"] = CPLEXPATH
+        else:
+            my_env["LD_LIBRARY_PATH"] = CPLEXPATH
         out_file =  matchingPath + 'out_{}.dat'.format(t)
         with open(out_file,'w') as output_f:
             subprocess.check_call([CPLEXPATH+"oplrun", modfile,datafile],stdout=output_f,env=my_env)
@@ -95,7 +98,7 @@ class AMoD:
         return paxAction
 
     # pax step
-    def pax_step(self, paxAction=None, CPLEXPATH=None, PATH=''):
+    def pax_step(self, paxAction=None, CPLEXPATH=None, PATH='', platform =  'linux'):
         t = self.time
         self.reward = 0
         for i in self.region:
@@ -105,7 +108,7 @@ class AMoD:
         self.info['revenue'] = 0
         self.info['rebalancing_cost'] = 0
         if paxAction is None:  # default matching algorithm used if isMatching is True, matching method will need the information of self.acc[t+1], therefore this part cannot be put forward
-            paxAction = self.matching(CPLEXPATH=CPLEXPATH, PATH=PATH)
+            paxAction = self.matching(CPLEXPATH=CPLEXPATH, PATH=PATH, platform = platform)
         self.paxAction = paxAction
         # serving passengers
         for k in range(len(self.edges)):
@@ -246,7 +249,7 @@ class AMoD:
     
     
 class Scenario:
-    def __init__(self, N1=2, N2=4, tf=60, T=10, sd=None, ninit=5, tripAttr=None, demand_input=None,
+    def __init__(self, N1=2, N2=4, tf=60, T=10, sd=None, ninit=5, tripAttr=None, demand_input=None, demand_ratio = None,
                  trip_length_preference = 0.25, grid_travel_time = 1, fix_price=False):
         # trip_length_preference: positive - more shorter trips, negative - more longer trips
         # grid_travel_time: travel time between grids
@@ -255,6 +258,12 @@ class Scenario:
         #          dict/defaultdict - total demand between pairs of regions
         # demand_input will be converted to a variable static_demand to represent the demand between each pair of nodes
         # static_demand will then be sampled according to a Poisson distribution
+        if demand_ratio != None:
+            self.demand_ratio = list(np.interp(range(0,tf), np.arange(0,tf, tf/len(demand_ratio)), demand_ratio))+[1]*T
+        else:
+            self.demand_ratio = [1]*(tf+T)
+            
+        
         self.trip_length_preference = trip_length_preference
         self.grid_travel_time = grid_travel_time
         self.demand_input = demand_input
@@ -346,7 +355,7 @@ class Scenario:
             p = self.p
         for i,j in self.G.edges:
             for t in range(0,self.tf+self.T):
-                demand[i,j][t] = np.random.poisson(self.static_demand[i,j])
+                demand[i,j][t] = np.random.poisson(self.static_demand[i,j])*self.demand_ratio[t]
                 if self.fix_price:
                     price[i,j][t] = p[i,j]
                 else:
@@ -357,34 +366,37 @@ class Scenario:
                 
 if __name__=='__main__':
     # for training, put scenario inside the loop, for testing, put scenarios outside the loop and define sd
-    scenario = Scenario(sd=10) # default one used in current training/testings    
-    scenario = Scenario(sd=10,demand_input = {(1,6):2, (0,7):2, 'default':0.1}) # uni-directional 
-    
+    #scenario = Scenario(sd=10) # default one used in current training/testings    
+    #scenario = Scenario(sd=10,demand_input = {(1,6):2, (0,7):2, 'default':0.1}) # uni-directional 
+    scenario = Scenario(sd=10,demand_input = {(1,6):20, (0,7):20, 'default':1}, ninit = 60, demand_ratio=[1,1.5,1])
+
     # only matching no rebalancing
-    env1 = AMoD(scenario)
-    opt_rew1 = []
-    obs = env1.reset()
-    done = False
-    served1 = 0
-    rebcost1 = 0
-    opcost1 = 0
-    revenue1 = 0
-    while(not done):
-        #print(env1.time)   
+    # env1 = AMoD(scenario)
+    # opt_rew1 = []
+    # obs = env1.reset()
+    # done = False
+    # served1 = 0
+    # rebcost1 = 0
+    # opcost1 = 0
+    # revenue1 = 0
+    # while(not done):
+    #     #print(env1.time)   
         
-        obs, reward, done, info = env1.pax_step()
-        opt_rew1.append(reward) # collect reward here to determine rebalancing actions
-        rebAction = [0 for i,j in env1.edges]
-        obs, reward, done, info = env1.reb_step(rebAction)
-        served1 += info['served_demand']
-        rebcost1 += info['rebalancing_cost']
-        opcost1 += info['operating_cost']
-        revenue1 += info['revenue']
+    #     obs, reward, done, info = env1.pax_step()
+    #     opt_rew1.append(reward) # collect reward here to determine rebalancing actions
+    #     rebAction = [0 for i,j in env1.edges]
+    #     obs, reward, done, info = env1.reb_step(rebAction)
+    #     served1 += info['served_demand']
+    #     rebcost1 += info['rebalancing_cost']
+    #     opcost1 += info['operating_cost']
+    #     revenue1 += info['revenue']
         
     
     # MPC
-    scenario = Scenario(sd=10,demand_input = {(1,6):2, (0,7):2, 'default':0.1}) # uni-directional
+    scenario = Scenario(sd=10,demand_input = {(1,6):20, (0,7):20, 'default':1}, ninit = 60, demand_ratio=[1,1.5,1])
     env2 = AMoD(scenario)
+    
+    
     opt_rew2 = []
     obs = env2.reset()
     done = False
