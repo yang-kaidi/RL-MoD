@@ -8,7 +8,7 @@ import numpy as np
 import subprocess
 import os
 import networkx as nx
-from util import mat2str
+from ..misc.utils import mat2str
 from copy import deepcopy
 
 class AMoD:
