@@ -20,10 +20,19 @@ class AMoD:
         self.T = scenario.T # planning time
         self.tf = scenario.tf # final time
         self.demand = defaultdict(dict) # demand
+        self.depDemand = dict()
+        self.arrDemand = dict()
+        self.region = list(self.G) # set of regions
+        for i in self.region:
+            self.depDemand[i] = defaultdict(float)
+            self.arrDemand[i] = defaultdict(float)
+            
         self.price = defaultdict(dict) # price
         for i,j,t,d,p in scenario.tripAttr: # trip attribute (origin, destination, time of request, demand, price)
             self.demand[i,j][t] = d
-            self.price[i,j][t] = p
+            self.price[i,j][t] = p 
+            self.depDemand[i][t] += d
+            self.arrDemand[i][t+self.G.edges[i,j]['time']] += d
         self.acc = defaultdict(dict) # number of vehicles within each region, key: i - region, t - time
         self.dacc = defaultdict(dict) # number of vehicles arriving at each region, key: i - region, t - time
         self.rebFlow = defaultdict(dict) # number of rebalancing vehicles, key: (i,j) - (origin, destination), t - time
@@ -34,7 +43,7 @@ class AMoD:
             self.edges.append((i,i))
             for e in self.G.out_edges(i):
                 self.edges.append(e)
-                self.region = list(self.G) # set of regions
+        
         self.nedge = [len(self.G.out_edges(n))+1 for n in self.region] # number of edges leaving each region        
         for i,j in self.G.edges:
             self.rebFlow[i,j] = defaultdict(float)
@@ -179,9 +188,14 @@ class AMoD:
         self.demand = defaultdict(dict) # demand
         self.price = defaultdict(dict) # price
         tripAttr = self.scenario.get_random_demand(reset=True)
+        self.regionDemand= defaultdict(dict)
         for i,j,t,d,p in tripAttr: # trip attribute (origin, destination, time of request, demand, price)
             self.demand[i,j][t] = d
             self.price[i,j][t] = p
+            if t not in self.regionDemand[i]:
+                self.regionDemand[i][t] = 0
+            else:
+                self.regionDemand[i][t] +=d
             
         self.time = 0
         for i,j in self.G.edges:
@@ -250,7 +264,7 @@ class AMoD:
     
 class Scenario:
     def __init__(self, N1=2, N2=4, tf=60, T=10, sd=None, ninit=5, tripAttr=None, demand_input=None, demand_ratio = None,
-                 trip_length_preference = 0.25, grid_travel_time = 1, fix_price=False):
+                 trip_length_preference = 0.25, grid_travel_time = 1, fix_price=False, alpha = 0.2):
         # trip_length_preference: positive - more shorter trips, negative - more longer trips
         # grid_travel_time: travel time between grids
         # demand_input： list - total demand out of each region, 
@@ -258,12 +272,13 @@ class Scenario:
         #          dict/defaultdict - total demand between pairs of regions
         # demand_input will be converted to a variable static_demand to represent the demand between each pair of nodes
         # static_demand will then be sampled according to a Poisson distribution
+        # alpha: parameter for uniform distribution of demand levels - [1-alpha, 1+alpha] * demand_input
         if demand_ratio != None:
             self.demand_ratio = list(np.interp(range(0,tf), np.arange(0,tf, tf/len(demand_ratio)), demand_ratio))+[1]*T
         else:
             self.demand_ratio = [1]*(tf+T)
             
-        
+        self.alpha = alpha
         self.trip_length_preference = trip_length_preference
         self.grid_travel_time = grid_travel_time
         self.demand_input = demand_input
@@ -331,24 +346,26 @@ class Scenario:
         
         # converting demand_input to static_demand
         # skip this when resetting the demand
-        if not reset:
-            self.static_demand = dict()
-            if type(self.demand_input) in [float, int, list, np.array]:
-                if type(self.demand_input) in [float, int]:            
-                    self.region_demand = np.random.rand(len(self.G)) * self.demand_input  
-                else:
-                    self.region_demand = self.demand_input            
-                for i in self.G.nodes:
-                    J = [j for _,j in self.G.out_edges(i)]
-                    prob = np.array([np.math.exp(-self.G.edges[i,j]['time']*self.trip_length_preference) for j in J])
-                    prob = prob/sum(prob)
-                    for idx in range(len(J)):
-                        self.static_demand[i,J[idx]] = self.region_demand[i] * prob[idx]
-            elif type(self.demand_input) in [dict, defaultdict]:
-                for i,j in self.G.edges:
-                    self.static_demand[i,j] = self.demand_input[i,j] if (i,j) in self.demand_input else self.demand_input['default']
+        # if not reset:
+        self.static_demand = dict()            
+        if type(self.demand_input) in [float, int, list, np.array]:
+            if type(self.demand_input) in [float, int]:            
+                self.region_demand = (np.random.rand(len(self.G))*self.alpha*2+1-self.alpha) * self.demand_input  
             else:
-                raise Exception("demand_input should be number, array-like, or dictionary-like values")
+                self.region_demand = (np.random.rand(len(self.G))*self.alpha*2+1-self.alpha) * np.array(self.demand_input)
+            for i in self.G.nodes:
+                J = [j for _,j in self.G.out_edges(i)]
+                prob = np.array([np.math.exp(-self.G.edges[i,j]['time']*self.trip_length_preference) for j in J])
+                prob = prob/sum(prob)
+                for idx in range(len(J)):
+                    self.static_demand[i,J[idx]] = self.region_demand[i] * prob[idx]
+        elif type(self.demand_input) in [dict, defaultdict]:
+            for i,j in self.G.edges:
+                self.static_demand[i,j] = self.demand_input[i,j] if (i,j) in self.demand_input else self.demand_input['default']
+                rand = (np.random.rand()*self.alpha*2+1-self.alpha)
+                self.static_demand[i,j] *= rand
+        else:
+            raise Exception("demand_input should be number, array-like, or dictionary-like values")
         
         # generating demand and prices
         if self.fix_price:
@@ -363,12 +380,18 @@ class Scenario:
                 tripAttr.append((i,j,t,demand[i,j][t],price[i,j][t]))
 
         return tripAttr
-                
+
+class Star2Complete(Scenario):
+    def __init__(self, N1 = 4, N2 =4, sd = 10, star_demand = 20, complete_demand = 1, star_center = [5,6,9,10], grid_travel_time=3, ninit = 50, demand_ratio=[1,1.5,1], alpha=0.2, beta = 0.5): 
+        # beta - proportion of star network
+        # alpha - parameter for uniform distribution of demand [1-alpha, 1+alpha]
+        super(Star2Complete, self).__init__(N1=N1,N2=N2,sd=sd, ninit = ninit, grid_travel_time=grid_travel_time, demand_input = {(i,j): complete_demand*(1-beta) + (star_demand*beta if j in star_center and i not in star_center else 0) for i in range(0,N1*N2) for j in range(0,N1*N2) if i!=j})
+        
 if __name__=='__main__':
     # for training, put scenario inside the loop, for testing, put scenarios outside the loop and define sd
     #scenario = Scenario(sd=10) # default one used in current training/testings    
     #scenario = Scenario(sd=10,demand_input = {(1,6):2, (0,7):2, 'default':0.1}) # uni-directional 
-    scenario = Scenario(sd=10,demand_input = {(1,6):20, (0,7):20, 'default':1}, ninit = 60, demand_ratio=[1,1.5,1])
+    #scenario = Scenario(sd=10,demand_input = {(1,6):20, (0,7):20, 'default':1}, ninit = 60, demand_ratio=[1,1.5,1])
 
     # only matching no rebalancing
     # env1 = AMoD(scenario)
@@ -393,24 +416,31 @@ if __name__=='__main__':
         
     
     # MPC
-    scenario = Scenario(sd=10,demand_input = {(1,6):20, (0,7):20, 'default':1}, ninit = 60, demand_ratio=[1,1.5,1])
+    #scenario = Scenario(sd=10,demand_input = {(1,6):20, (0,7):20, 'default':1}, ninit = 60, demand_ratio=[1,1.5,1], alpha = 0.2)
+    scenario = Star2Complete(star_demand = 24, complete_demand=4, beta=0.7, ninit = 200)
     env2 = AMoD(scenario)
     
+    for step in range(0,5):
     
-    opt_rew2 = []
-    obs = env2.reset()
-    done = False
-    served2 = 0
-    rebcost2 = 0
-    opcost2 = 0
-    revenue2 = 0
-    while(not done):
-        #print(env2.time)         
-        paxAction, rebAction = env2.MPC_exact()    
-        obs, reward, done, info = env2.pax_step(paxAction)
-        opt_rew2.append(reward) 
-        obs, reward, done, info = env2.reb_step(rebAction)
-        served2 += info['served_demand']
-        rebcost2 += info['rebalancing_cost']
-        opcost2 += info['operating_cost']
-        revenue2 += info['revenue'] 
+    
+        CPLEXPATH = '/opt/ibm/ILOG/CPLEX_Studio1210/opl/bin/x86-64_linux/'
+        
+        opt_rew2 = []
+        obs = env2.reset()
+        done = False
+        served2 = 0
+        rebcost2 = 0
+        opcost2 = 0
+        revenue2 = 0
+        demand2 = sum([env2.demand[i,j][t] for i,j in env2.demand for t in range(0,60)])
+        while(not done):
+            #print(env2.time)         
+            paxAction, rebAction = env2.MPC_exact(CPLEXPATH=CPLEXPATH)    
+            obs, reward, done, info = env2.pax_step(paxAction,CPLEXPATH = CPLEXPATH)
+            opt_rew2.append(reward) 
+            obs, reward, done, info = env2.reb_step(rebAction)
+            served2 += info['served_demand']
+            rebcost2 += info['rebalancing_cost']
+            opcost2 += info['operating_cost']
+            revenue2 += info['revenue'] 
+        print(demand2, served2/demand2)
