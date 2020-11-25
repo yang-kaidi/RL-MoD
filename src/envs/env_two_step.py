@@ -417,7 +417,8 @@ if __name__=='__main__':
     
     # MPC
     #scenario = Scenario(sd=10,demand_input = {(1,6):20, (0,7):20, 'default':1}, ninit = 60, demand_ratio=[1,1.5,1], alpha = 0.2)
-    scenario = Star2Complete(star_demand = 24, complete_demand=4, beta=0.7, ninit = 200)
+    scenario = Star2Complete(star_demand = 6, complete_demand=1.6, beta=0.7, ninit = 200)
+
     env2 = AMoD(scenario)
     
     for step in range(0,5):
