@@ -78,7 +78,7 @@ subject to
 		sum(e in edge: e.i==i)(demandFlow[e][t]+ rebFlow[e][t]) <= acc[i][t];
       	if(t == t0)
       		acc[i][t] == accInit[i];
-		acc[i][t] - sum(e in edge: e.i==i)demandFlow[e][t] <= 1000 * y[i][t];
+		acc[i][t] - sum(e in edge: e.i==i)demandFlow[e][t] <= 1000 * (1-y[i][t]);
 		phi[i][t] <= 1000*y[i][t];
  	}  	    
     forall(e in edge)

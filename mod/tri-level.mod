@@ -85,11 +85,11 @@ subject to
     	acc[i][t+1] == acc[i][t] - sum(e in edge: e.i==i)(demandFlow[e][t] + rebFlow[e][t]) 
       			+ sum(e in edge: e.j==i && t-tt[e]>=t0)(demandFlow[e][t-tt[e]] + rebFlow[e][t-tt[e]]) + dacc[i][t];
 		sum(e in edge: e.i==i)(demandFlow[e][t]+ rebFlow[e][t]) <= acc[i][t];
-		acc[i][t] - sum(e in edge: e.i==i)demandFlow[e][t] <= 1000 * y[i][t];
+		acc[i][t] - sum(e in edge: e.i==i)demandFlow[e][t] <= 1000 * (1-y[i][t]);
 		phi[i][t] <= 1000*y[i][t];
-		sum(e in edge: e.i==i && e.i!=e.j) (rebFlow[<e.j, e.i>][t] - rebFlow[<e.i, e.j>][t]) - desiredAcc[i][t] + acc[i][t] >=0;
-		sum(e in edge: e.i==i && e.i!=e.j) (rebFlow[<e.j, e.i>][t] - rebFlow[<e.i, e.j>][t]) - desiredAcc[i][t] + acc[i][t] <= 1000 * u[i][t];
-		acc[i][t] - sum(e in edge: e.i==i)rebFlow[e][t] <= 1000 * v[i][t];
+		sum(e in edge: e.i==i && e.i!=e.j) (rebFlow[<e.j, e.i>][t] - rebFlow[<e.i, e.j>][t]) - desiredAcc[i][t] + acc[i][t]  - sum(e in edge: e.i==i)demandFlow[e][t] >=0;
+		sum(e in edge: e.i==i && e.i!=e.j) (rebFlow[<e.j, e.i>][t] - rebFlow[<e.i, e.j>][t]) - desiredAcc[i][t] + acc[i][t]  - sum(e in edge: e.i==i)demandFlow[e][t]<= 1000 * u[i][t];
+		acc[i][t] - sum(e in edge: e.i==i)rebFlow[e][t]  - sum(e in edge: e.i==i)demandFlow[e][t] <= 1000 * v[i][t];
 		rho[i][t] <= 1000 * (1-u[i][t]);
 		pi[i][t] <= 1000 * (1-v[i][t]);
       	if(t == t0)
