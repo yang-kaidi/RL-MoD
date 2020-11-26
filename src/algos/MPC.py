@@ -13,17 +13,18 @@ from copy import deepcopy
 
 
 class MPC:
-    def __init__(self, env, CPLEXPATH=None, platform = None):
+    def __init__(self, env, CPLEXPATH=None, platform = None, T = 20):
         self.env = env 
+        self.T = T
         self.CPLEXPATH = CPLEXPATH
         if self.CPLEXPATH is None:
             self.CPLEXPATH = "C:/Program Files/ibm/ILOG/CPLEX_Studio1210/opl/bin/x64_win64/"
         self.platform = platform
     def MPC_exact(self):
         t = self.env.time
-        demandAttr = [(i,j,tt,self.env.demand[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.env.T) if self.env.demand[i,j][tt]>1e-3]
+        demandAttr = [(i,j,tt,self.env.demand[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.T) if self.env.demand[i,j][tt]>1e-3]
         accTuple = [(n,self.env.acc[n][t]) for n in self.env.acc]
-        daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.env.T)]
+        daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.T)]
         edgeAttr = [(i,j,self.env.G.edges[i,j]['time']) for i,j in self.env.G.edges]
         modPath = os.getcwd().replace('\\','/')+'/mod/'
         MPCPath = os.getcwd().replace('\\','/')+'/MPC/exact/'
@@ -34,7 +35,7 @@ class MPC:
         with open(datafile,'w') as file:
             file.write('path="'+resfile+'";\r\n')
             file.write('t0='+str(t)+';\r\n')
-            file.write('T='+str(self.env.T)+';\r\n')
+            file.write('T='+str(self.T)+';\r\n')
             file.write('beta='+str(self.env.beta)+';\r\n')
             file.write('demandAttr='+mat2str(demandAttr)+';\r\n')
             file.write('edgeAttr='+mat2str(edgeAttr)+';\r\n')
@@ -70,9 +71,9 @@ class MPC:
     
     def bi_level_matching(self):
         t = self.env.time
-        demandAttr = [(i,j,tt,self.env.demand[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.env.T) if self.env.demand[i,j][tt]>1e-3]
+        demandAttr = [(i,j,tt,self.env.demand[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.T) if self.env.demand[i,j][tt]>1e-3]
         accTuple = [(n,self.env.acc[n][t]) for n in self.env.acc]
-        daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.env.T)]
+        daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.T)]
         edgeAttr = [(i,j,self.env.G.edges[i,j]['time']) for i,j in self.env.G.edges]
         modPath = os.getcwd().replace('\\','/')+'/mod/'
         MPCPath = os.getcwd().replace('\\','/')+'/MPC/bi-level-matching/'
@@ -83,7 +84,7 @@ class MPC:
         with open(datafile,'w') as file:
             file.write('path="'+resfile+'";\r\n')
             file.write('t0='+str(t)+';\r\n')
-            file.write('T='+str(self.env.T)+';\r\n')
+            file.write('T='+str(self.T)+';\r\n')
             file.write('beta='+str(self.env.beta)+';\r\n')
             file.write('demandAttr='+mat2str(demandAttr)+';\r\n')
             file.write('edgeAttr='+mat2str(edgeAttr)+';\r\n')
@@ -120,9 +121,9 @@ class MPC:
         
     def bi_level_rebalancing(self):
         t = self.env.time
-        demandAttr = [(i,j,tt,self.env.demand[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.env.T) if self.env.demand[i,j][tt]>1e-3]
+        demandAttr = [(i,j,tt,self.env.demand[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.T) if self.env.demand[i,j][tt]>1e-3]
         accTuple = [(n,self.env.acc[n][t]) for n in self.env.acc]
-        daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.env.T)]
+        daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.T)]
         edgeAttr = [(i,j,self.env.G.edges[i,j]['time']) for i,j in self.env.G.edges]
         modPath = os.getcwd().replace('\\','/')+'/mod/'
         MPCPath = os.getcwd().replace('\\','/')+'/MPC/bi-level-rebalancing/'
@@ -133,7 +134,7 @@ class MPC:
         with open(datafile,'w') as file:
             file.write('path="'+resfile+'";\r\n')
             file.write('t0='+str(t)+';\r\n')
-            file.write('T='+str(self.env.T)+';\r\n')
+            file.write('T='+str(self.T)+';\r\n')
             file.write('beta='+str(self.env.beta)+';\r\n')
             file.write('demandAttr='+mat2str(demandAttr)+';\r\n')
             file.write('edgeAttr='+mat2str(edgeAttr)+';\r\n')
@@ -176,9 +177,9 @@ class MPC:
     
     def bi_level_rebalancing_2_actions(self):
         t = self.env.time
-        demandAttr = [(i,j,tt,self.env.demand[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.env.T) if self.env.demand[i,j][tt]>1e-3]
+        demandAttr = [(i,j,tt,self.env.demand[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.T) if self.env.demand[i,j][tt]>1e-3]
         accTuple = [(n,self.env.acc[n][t]) for n in self.env.acc]
-        daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.env.T)]
+        daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.T)]
         edgeAttr = [(i,j,self.env.G.edges[i,j]['time']) for i,j in self.env.G.edges]
         modPath = os.getcwd().replace('\\','/')+'/mod/'
         MPCPath = os.getcwd().replace('\\','/')+'/MPC/bi-level-rebalancing-2-actions/'
@@ -189,7 +190,7 @@ class MPC:
         with open(datafile,'w') as file:
             file.write('path="'+resfile+'";\r\n')
             file.write('t0='+str(t)+';\r\n')
-            file.write('T='+str(self.env.T)+';\r\n')
+            file.write('T='+str(self.T)+';\r\n')
             file.write('beta='+str(self.env.beta)+';\r\n')
             file.write('demandAttr='+mat2str(demandAttr)+';\r\n')
             file.write('edgeAttr='+mat2str(edgeAttr)+';\r\n')
@@ -237,9 +238,9 @@ class MPC:
         
     def tri_level(self):
         t = self.env.time
-        demandAttr = [(i,j,tt,self.env.demand[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.env.T) if self.env.demand[i,j][tt]>1e-3]
+        demandAttr = [(i,j,tt,self.env.demand[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.T) if self.env.demand[i,j][tt]>1e-3]
         accTuple = [(n,self.env.acc[n][t]) for n in self.env.acc]
-        daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.env.T)]
+        daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.T)]
         edgeAttr = [(i,j,self.env.G.edges[i,j]['time']) for i,j in self.env.G.edges]
         modPath = os.getcwd().replace('\\','/')+'/mod/'
         MPCPath = os.getcwd().replace('\\','/')+'/MPC/tri-level/'
@@ -250,7 +251,7 @@ class MPC:
         with open(datafile,'w') as file:
             file.write('path="'+resfile+'";\r\n')
             file.write('t0='+str(t)+';\r\n')
-            file.write('T='+str(self.env.T)+';\r\n')
+            file.write('T='+str(self.T)+';\r\n')
             file.write('beta='+str(self.env.beta)+';\r\n')
             file.write('demandAttr='+mat2str(demandAttr)+';\r\n')
             file.write('edgeAttr='+mat2str(edgeAttr)+';\r\n')
@@ -289,5 +290,5 @@ class MPC:
                             continue
                         i,f = v.split(',')
                         desiredAcc[int(i)] = float(f)
-        return desiredAcc
+        return desiredAcc, paxFlow, rebFlow
 

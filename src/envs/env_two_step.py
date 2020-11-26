@@ -17,7 +17,6 @@ class AMoD:
         self.scenario = deepcopy(scenario) # I changed it to deep copy so that the scenario input is not modified by env 
         self.G = scenario.G # Road Graph: node - region, edge - connection of regions, node attr: 'accInit', edge attr: 'time'
         self.time = 0 # current time
-        self.T = scenario.T # planning time
         self.tf = scenario.tf # final time
         self.demand = defaultdict(dict) # demand
         self.depDemand = dict()
@@ -125,6 +124,7 @@ class AMoD:
             if (i,j) not in self.G.edges:
                 continue
             # I moved the min operator above, since we want paxFlow to be consistent with paxAction
+            assert paxAction[k] < self.acc[i][t+1] + 1e-3
             self.paxAction[k] = min(self.acc[i][t+1], paxAction[k])            
             self.servedDemand[i,j][t] = self.paxAction[k]
             self.paxFlow[i,j][t+self.G.edges[i,j]['time']] = self.paxAction[k]
@@ -211,59 +211,11 @@ class AMoD:
         self.obs = (self.acc, self.time, self.dacc, self.demand)      
         self.reward = 0
         return self.obs
-    
-    def MPC_exact(self, CPLEXPATH=None):
-        t = self.time
-        demandAttr = [(i,j,tt,self.demand[i,j][tt], self.price[i,j][tt]) for i,j in self.demand for tt in range(t,t+self.T) if self.demand[i,j][tt]>1e-3]
-        accTuple = [(n,self.acc[n][t]) for n in self.acc]
-        daccTuple = [(n,tt,self.dacc[n][tt]) for n in self.acc for tt in range(t,t+self.T)]
-        edgeAttr = [(i,j,self.G.edges[i,j]['time']) for i,j in self.G.edges]
-        modPath = os.getcwd().replace('\\','/')+'/mod/'
-        MPCPath = os.getcwd().replace('\\','/')+'/MPC/'
-        if not os.path.exists(MPCPath):
-            os.makedirs(MPCPath)
-        datafile = MPCPath + 'data_{}.dat'.format(t)
-        resfile = MPCPath + 'res_{}.dat'.format(t)
-        with open(datafile,'w') as file:
-            file.write('path="'+resfile+'";\r\n')
-            file.write('t0='+str(t)+';\r\n')
-            file.write('T='+str(self.T)+';\r\n')
-            file.write('beta='+str(self.beta)+';\r\n')
-            file.write('demandAttr='+mat2str(demandAttr)+';\r\n')
-            file.write('edgeAttr='+mat2str(edgeAttr)+';\r\n')
-            file.write('accInitTuple='+mat2str(accTuple)+';\r\n')
-            file.write('daccAttr='+mat2str(daccTuple)+';\r\n')
-            
-        modfile = modPath+'MPC.mod'
-        if CPLEXPATH is None:
-            CPLEXPATH = "C:/Program Files/ibm/ILOG/CPLEX_Studio1210/opl/bin/x64_win64/"
-        my_env = os.environ.copy()
-        my_env["LD_LIBRARY_PATH"] = CPLEXPATH
-        out_file =  MPCPath + 'out_{}.dat'.format(t)
-        with open(out_file,'w') as output_f:
-            subprocess.check_call([CPLEXPATH+"oplrun", modfile,datafile],stdout=output_f,env=my_env)
-        output_f.close()
-        paxFlow = defaultdict(float)
-        rebFlow = defaultdict(float)
-        with open(resfile,'r', encoding="utf8") as file:
-            for row in file:
-                item = row.replace('e)',')').strip().strip(';').split('=')
-                if item[0] == 'flow':
-                    values = item[1].strip(')]').strip('[(').split(')(')
-                    for v in values:
-                        if len(v) == 0:
-                            continue
-                        i,j,f1,f2 = v.split(',')
-                        paxFlow[int(i),int(j)] = float(f1)
-                        rebFlow[int(i),int(j)] = float(f2)
-        paxAction = [paxFlow[i,j] if (i,j) in paxFlow else 0 for i,j in self.edges]
-        rebAction = [rebFlow[i,j] if (i,j) in rebFlow else 0 for i,j in self.edges]
-        return paxAction,rebAction
-    
+   
     
     
 class Scenario:
-    def __init__(self, N1=2, N2=4, tf=60, T=10, sd=None, ninit=5, tripAttr=None, demand_input=None, demand_ratio = None,
+    def __init__(self, N1=2, N2=4, tf=60, sd=None, ninit=5, tripAttr=None, demand_input=None, demand_ratio = None,
                  trip_length_preference = 0.25, grid_travel_time = 1, fix_price=False, alpha = 0.2):
         # trip_length_preference: positive - more shorter trips, negative - more longer trips
         # grid_travel_time: travel time between grids
@@ -274,10 +226,11 @@ class Scenario:
         # static_demand will then be sampled according to a Poisson distribution
         # alpha: parameter for uniform distribution of demand levels - [1-alpha, 1+alpha] * demand_input
         if demand_ratio != None:
-            self.demand_ratio = list(np.interp(range(0,tf), np.arange(0,tf, tf/len(demand_ratio)), demand_ratio))+[1]*T
+            self.demand_ratio = list(np.interp(range(0,tf), np.arange(0,tf+1, tf/(len(demand_ratio)-1)), demand_ratio))+[1]*tf
         else:
-            self.demand_ratio = [1]*(tf+T)
+            self.demand_ratio = [1]*(tf+tf)
             
+        
         self.alpha = alpha
         self.trip_length_preference = trip_length_preference
         self.grid_travel_time = grid_travel_time
@@ -298,9 +251,7 @@ class Scenario:
         if self.fix_price: # fix price
             self.p = defaultdict(dict)
             for i,j in self.G.edges:
-                np.random.seed(self.sd)
-                self.p[i,j] = min(3,np.random.exponential(2)+1)*self.G.edges[i,j]['time']
-        self.T = T
+                self.p[i,j] = (np.random.rand()*2+1)*self.G.edges[i,j]['time']
         if tripAttr != None: # given demand as a defaultdict(dict)
             self.tripAttr = deepcopy(tripAttr)
         else:
@@ -316,43 +267,17 @@ class Scenario:
         price = defaultdict(dict)        
         tripAttr = []
         
-        # default demand
-        if self.demand_input == None:
-            # generate demand, travel time, and price
-            D = dict()
-            for i,j in self.G.edges:
-                D[i,j] = np.random.rand() * 0.5
-                for t in range(0,self.tf+self.T):
-                    if t%2 == 0:
-                        if (i==0) and (j==7):
-                            demand[i,j][t] = np.random.poisson(5)
-                        elif (i==6) and (j==1):
-                            demand[i,j][t] = np.random.poisson(5)
-                        else:
-                            demand[i,j][t] = np.random.poisson(D[i,j])
-                    else:
-                        if (i==7) and (j==0):
-                            demand[i,j][t] = np.random.poisson(5)
-                        elif (i==1) and (j==6):
-                            demand[i,j][t] = np.random.poisson(5)
-                        else:
-                            demand[i,j][t] = np.random.poisson(D[i,j])
-                    price[i,j][t] = min(3,np.random.exponential(2)+1) *self.G.edges[i,j]['time']
-            tripAttr = []
-            for i,j in demand:
-                for t in demand[i,j]:
-                    tripAttr.append((i,j,t,demand[i,j][t],price[i,j][t]))
-            return tripAttr
-        
         # converting demand_input to static_demand
         # skip this when resetting the demand
         # if not reset:
         self.static_demand = dict()            
+        region_rand = (np.random.rand(len(self.G))*self.alpha*2+1-self.alpha) 
         if type(self.demand_input) in [float, int, list, np.array]:
+            
             if type(self.demand_input) in [float, int]:            
-                self.region_demand = (np.random.rand(len(self.G))*self.alpha*2+1-self.alpha) * self.demand_input  
+                self.region_demand = region_rand * self.demand_input  
             else:
-                self.region_demand = (np.random.rand(len(self.G))*self.alpha*2+1-self.alpha) * np.array(self.demand_input)
+                self.region_demand = region_rand * np.array(self.demand_input)
             for i in self.G.nodes:
                 J = [j for _,j in self.G.out_edges(i)]
                 prob = np.array([np.math.exp(-self.G.edges[i,j]['time']*self.trip_length_preference) for j in J])
@@ -362,8 +287,8 @@ class Scenario:
         elif type(self.demand_input) in [dict, defaultdict]:
             for i,j in self.G.edges:
                 self.static_demand[i,j] = self.demand_input[i,j] if (i,j) in self.demand_input else self.demand_input['default']
-                rand = (np.random.rand()*self.alpha*2+1-self.alpha)
-                self.static_demand[i,j] *= rand
+                
+                self.static_demand[i,j] *= region_rand[i]
         else:
             raise Exception("demand_input should be number, array-like, or dictionary-like values")
         
@@ -371,8 +296,8 @@ class Scenario:
         if self.fix_price:
             p = self.p
         for i,j in self.G.edges:
-            for t in range(0,self.tf+self.T):
-                demand[i,j][t] = np.random.poisson(self.static_demand[i,j])*self.demand_ratio[t]
+            for t in range(0,self.tf*2):
+                demand[i,j][t] = np.random.poisson(self.static_demand[i,j]*self.demand_ratio[t])
                 if self.fix_price:
                     price[i,j][t] = p[i,j]
                 else:
@@ -382,10 +307,16 @@ class Scenario:
         return tripAttr
 
 class Star2Complete(Scenario):
-    def __init__(self, N1 = 4, N2 =4, sd = 10, star_demand = 20, complete_demand = 1, star_center = [5,6,9,10], grid_travel_time=3, ninit = 50, demand_ratio=[1,1.5,1], alpha=0.2, beta = 0.5): 
+    def __init__(self, N1 = 4, N2 =4, sd = 10, star_demand = 20, complete_demand = 1, star_center = [5,6,9,10], grid_travel_time=3, ninit = 50, demand_ratio=[1,1.5,1.5,1], alpha=0.2, fix_price=False): 
         # beta - proportion of star network
         # alpha - parameter for uniform distribution of demand [1-alpha, 1+alpha]
-        super(Star2Complete, self).__init__(N1=N1,N2=N2,sd=sd, ninit = ninit, grid_travel_time=grid_travel_time, demand_input = {(i,j): complete_demand*(1-beta) + (star_demand*beta if j in star_center and i not in star_center else 0) for i in range(0,N1*N2) for j in range(0,N1*N2) if i!=j})
+        super(Star2Complete, self).__init__(N1=N1,N2=N2,sd=sd, ninit = ninit, 
+                                            grid_travel_time=grid_travel_time, 
+                                            fix_price = fix_price,
+                                            alpha = alpha,
+                                            demand_ratio = demand_ratio,
+                                            demand_input = {(i,j): complete_demand + (star_demand if i in star_center and j not in star_center else 0) for i in range(0,N1*N2) for j in range(0,N1*N2) if i!=j}
+                                            )
         
 if __name__=='__main__':
     # for training, put scenario inside the loop, for testing, put scenarios outside the loop and define sd
