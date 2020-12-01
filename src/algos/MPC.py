@@ -10,7 +10,7 @@ import os
 import networkx as nx
 from src.misc.utils import mat2str
 from copy import deepcopy
-
+import re
 
 class MPC:
     def __init__(self, env, CPLEXPATH=None, platform = None, T = 20):
@@ -63,6 +63,8 @@ class MPC:
                         if len(v) == 0:
                             continue
                         i,j,f1,f2 = v.split(',')
+                        f1 = float(re.sub('[^0-9e.-]','', f1))
+                        f2 = float(re.sub('[^0-9e.-]','', f2))
                         paxFlow[int(i),int(j)] = float(f1)
                         rebFlow[int(i),int(j)] = float(f2)
         paxAction = [paxFlow[i,j] if (i,j) in paxFlow else 0 for i,j in self.env.edges]
@@ -113,6 +115,8 @@ class MPC:
                         if len(v) == 0:
                             continue
                         i,j,f1,f2 = v.split(',')
+                        f1 = float(re.sub('[^0-9e.-]','', f1))
+                        f2 = float(re.sub('[^0-9e.-]','', f2))
                         paxFlow[int(i),int(j)] = float(f1)
                         rebFlow[int(i),int(j)] = float(f2)
         paxAction = [paxFlow[i,j] if (i,j) in paxFlow else 0 for i,j in self.env.edges]
@@ -163,6 +167,8 @@ class MPC:
                         if len(v) == 0:
                             continue
                         i,j,f1,f2 = v.split(',')
+                        f1 = float(re.sub('[^0-9e.-]','', f1))
+                        f2 = float(re.sub('[^0-9e.-]','', f2))
                         paxFlow[int(i),int(j)] = float(f1)
                         rebFlow[int(i),int(j)] = float(f2)
                 elif item[0] == 'desiredAcc':
@@ -171,6 +177,7 @@ class MPC:
                         if len(v) == 0:
                             continue
                         i,f = v.split(',')
+                        f = float(re.sub('[^0-9e.-]','', f))
                         desiredAcc[int(i)] = float(f)
         paxAction = [paxFlow[i,j] if (i,j) in paxFlow else 0 for i,j in self.env.edges]
         return paxAction,desiredAcc
@@ -221,6 +228,8 @@ class MPC:
                         if len(v) == 0:
                             continue
                         i,j,f1,f2 = v.split(',')
+                        f1 = float(re.sub('[^0-9e.-]','', f1))
+                        f2 = float(re.sub('[^0-9e.-]','', f2))
                         paxFlow[int(i),int(j)] = float(f1)
                         rebFlow[int(i),int(j)] = float(f2)
                 elif item[0] == 'acc':
@@ -229,6 +238,8 @@ class MPC:
                         if len(v) == 0:
                             continue
                         i,f1,f2 = v.split(',')
+                        f1 = float(re.sub('[^0-9e.-]','', f1))
+                        f2 = float(re.sub('[^0-9e.-]','', f2))
                         departure[int(i)] = float(f1)
                         arrival[int(i)] = float(f2) 
                        
@@ -281,6 +292,8 @@ class MPC:
                         if len(v) == 0:
                             continue
                         i,j,f1,f2 = v.split(',')
+                        f1 = float(re.sub('[^0-9e.-]','', f1))
+                        f2 = float(re.sub('[^0-9e.-]','', f2))
                         paxFlow[int(i),int(j)] = float(f1)
                         rebFlow[int(i),int(j)] = float(f2)
                 elif item[0] == 'desiredAcc':
@@ -289,6 +302,7 @@ class MPC:
                         if len(v) == 0:
                             continue
                         i,f = v.split(',')
+                        f = float(re.sub('[^0-9e.-]','', f))
                         desiredAcc[int(i)] = float(f)
         return desiredAcc, paxFlow, rebFlow
 
