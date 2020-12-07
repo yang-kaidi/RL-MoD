@@ -225,10 +225,7 @@ class Scenario:
         # demand_input will be converted to a variable static_demand to represent the demand between each pair of nodes
         # static_demand will then be sampled according to a Poisson distribution
         # alpha: parameter for uniform distribution of demand levels - [1-alpha, 1+alpha] * demand_input
-        if demand_ratio != None:
-            self.demand_ratio = list(np.interp(range(0,tf), np.arange(0,tf+1, tf/(len(demand_ratio)-1)), demand_ratio))+[1]*tf
-        else:
-            self.demand_ratio = [1]*(tf+tf)
+        
             
         
         self.alpha = alpha
@@ -245,6 +242,22 @@ class Scenario:
         for n in self.G.nodes:
             self.G.nodes[n]['accInit'] = ninit
         self.tf = tf
+        self.demand_ratio = defaultdict(list)
+        
+        if demand_ratio == None or type(demand_ratio) == list:            
+            for i,j in self.G.edges:
+                if type(demand_ratio) == list:
+                    self.demand_ratio[i,j] = list(np.interp(range(0,tf), np.arange(0,tf+1, tf/(len(demand_ratio)-1)), demand_ratio))+[1]*tf
+                else:
+                    self.demand_ratio[i,j] = [1]*(tf+tf)
+        else:
+            for i,j in self.G.edges:
+                if (i,j) in demand_ratio:
+                    self.demand_ratio[i,j] = list(np.interp(range(0,tf), np.arange(0,tf+1, tf/(len(demand_ratio[i,j])-1)), demand_ratio[i,j]))+[1]*tf
+                else:
+                    self.demand_ratio[i,j] = list(np.interp(range(0,tf), np.arange(0,tf+1, tf/(len(demand_ratio['default'])-1)), demand_ratio['default']))+[1]*tf
+            
+            
         self.sd = sd
         if sd != None:
             np.random.seed(self.sd)
@@ -256,7 +269,7 @@ class Scenario:
             self.tripAttr = deepcopy(tripAttr)
         else:
             self.tripAttr = self.get_random_demand() # randomly generated demand
-    
+        
     def get_random_demand(self, reset = False):        
         # generate demand and price
         # reset = True means that the function is called in the reset() method of AMoD enviroment,
@@ -297,7 +310,7 @@ class Scenario:
             p = self.p
         for i,j in self.G.edges:
             for t in range(0,self.tf*2):
-                demand[i,j][t] = np.random.poisson(self.static_demand[i,j]*self.demand_ratio[t])
+                demand[i,j][t] = np.random.poisson(self.static_demand[i,j]*self.demand_ratio[i,j][t])
                 if self.fix_price:
                     price[i,j][t] = p[i,j]
                 else:
