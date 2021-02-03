@@ -8,6 +8,7 @@ tuple demandAttrTuple{
   	int j;
   	int t;
   	float v;
+  	float tt;
   	float p;
 }
 
@@ -53,14 +54,15 @@ float beta = ...;
 {int} region = {i|<i,v> in accInitTuple};
 float accInit[region] = [i:v|<i,v> in accInitTuple];
 float dacc[region][t0..tf-1] = [i:[t:v]|<i,t,v> in daccAttr];
-{demandEdgeTuple} demandEdge = {<i,j,t>|<i,j,t,v,p> in demandAttr};
-float demand[demandEdge] = [<i,j,t>:v|<i,j,t,v,p> in demandAttr];
-float price[demandEdge] = [<i,j,t>:p|<i,j,t,v,p> in demandAttr];
+{demandEdgeTuple} demandEdge = {<i,j,t>|<i,j,t,v,tt,p> in demandAttr};
+float demand[demandEdge] = [<i,j,t>:v|<i,j,t,v,tt,p> in demandAttr];
+float price[demandEdge] = [<i,j,t>:p|<i,j,t,v,tt,p> in demandAttr];
+float demandTime[demandEdge] = [<i,j,t>:tt|<i,j,t,v,tt,p> in demandAttr];
 int tt[edge] = [<i,j>:t|<i,j,t> in edgeAttr];
 dvar float+ demandFlow[edge][t0..tf-1];
 dvar float+ rebFlow[edge][t0..tf-1];
 dvar float+ acc[region][t0..tf];
-maximize(sum(e in demandEdge) demandFlow[<e.i,e.j>][e.t]*price[e] - beta * sum(e in edge,t in t0..tf-1)(rebFlow[e][t]+demandFlow[e][t])*tt[e]);
+maximize(sum(e in demandEdge) demandFlow[<e.i,e.j>][e.t]*price[e] - beta * sum(e in edge,t in t0..tf-1)rebFlow[e][t]*tt[e]  - beta * sum(e in edge,t in t0..tf-1:<e.i,e.j,t> in demandEdge)demandFlow[e][t]*demandTime[<e.i,e.j,t>]);
 subject to
 {
   forall(t in t0..tf-1)
@@ -68,7 +70,7 @@ subject to
     forall(i in region)
     {  
     	acc[i][t+1] == acc[i][t] - sum(e in edge: e.i==i)(demandFlow[e][t] + rebFlow[e][t]) 
-      			+ sum(e in edge: e.j==i && t-tt[e]>=t0)(demandFlow[e][t-tt[e]] + rebFlow[e][t-tt[e]]) + dacc[i][t];
+      			+ sum(e in demandEdge: e.j==i && e.t+demandTime[e]==t)demandFlow[<e.i,e.j>][e.t] + sum(e in edge: e.j==i && t-tt[e]>=t0)rebFlow[e][t-tt[e]] + dacc[i][t];
 		sum(e in edge: e.i==i)(demandFlow[e][t]+ rebFlow[e][t]) <= acc[i][t];
       	if(t == t0)
       		acc[i][t] == accInit[i];
