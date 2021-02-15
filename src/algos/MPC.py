@@ -20,6 +20,14 @@ import networkx as nx
 from copy import deepcopy
 import re
 
+from collections import defaultdict
+import numpy as np
+import subprocess
+import os
+import networkx as nx
+from copy import deepcopy
+import re
+
 class MPC:
     def __init__(self, env, CPLEXPATH=None, platform = None, T = 20):
         self.env = env 
@@ -33,7 +41,7 @@ class MPC:
         demandAttr = [(i,j,tt,self.env.demand[i,j][tt], self.env.demandTime[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.T) if self.env.demand[i,j][tt]>1e-3]
         accTuple = [(n,self.env.acc[n][t]) for n in self.env.acc]
         daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.T)]
-        edgeAttr = [(i,j,self.env.rebTime[i,j][t]) for i,j in self.env.edges]
+        edgeAttr = [(i,j,self.env.rebTime[i,j]) for i,j in self.env.edges]
         modPath = os.getcwd().replace('\\','/')+'/mod/'
         MPCPath = os.getcwd().replace('\\','/')+'/MPC/exact/'
         if not os.path.exists(MPCPath):
@@ -84,7 +92,7 @@ class MPC:
         demandAttr = [(i,j,tt,self.env.demand[i,j][tt], self.env.demandTime[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.T) if self.env.demand[i,j][tt]>1e-3]
         accTuple = [(n,self.env.acc[n][t]) for n in self.env.acc]
         daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.T)]
-        edgeAttr = [(i,j,self.env.rebTime[i,j][t]) for i,j in self.env.G.edges]
+        edgeAttr = [(i,j,self.env.rebTime[i,j]) for i,j in self.env.G.edges]
         modPath = os.getcwd().replace('\\','/')+'/mod/'
         MPCPath = os.getcwd().replace('\\','/')+'/MPC/bi-level-matching/'
         if not os.path.exists(MPCPath):
@@ -257,11 +265,10 @@ class MPC:
         
     def tri_level(self):
         t = self.env.time
-        demandAttr = [(i,j,tt,self.env.demand[i,j][tt],self.env.demandTime[i,j][tt], self.env.price[i,j][tt]) \
-                      for i,j in self.env.demand for tt in range(t,t+self.T) if tt in self.env.demand[i,j] and self.env.demand[i,j][tt]>1e-3]
+        demandAttr = [(i,j,tt,self.env.demand[i,j][tt],self.env.demandTime[i,j][tt], self.env.price[i,j][tt]) for i,j in self.env.demand for tt in range(t,t+self.T) if self.env.demand[i,j][tt]>1e-3]
         accTuple = [(n,self.env.acc[n][t]) for n in self.env.acc]
         daccTuple = [(n,tt,self.env.dacc[n][tt]) for n in self.env.acc for tt in range(t,t+self.T)]
-        edgeAttr = [(i,j,self.env.rebTime[i,j][t]) for i,j in self.env.edges]
+        edgeAttr = [(i,j,self.env.rebTime[i,j]) for i,j in self.env.edges]
         modPath = os.getcwd().replace('\\','/')+'/mod/'
         MPCPath = os.getcwd().replace('\\','/')+'/MPC/tri-level/'
         if not os.path.exists(MPCPath):
