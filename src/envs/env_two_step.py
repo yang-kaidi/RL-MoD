@@ -33,10 +33,8 @@ class AMoD:
             
         self.price = defaultdict(dict) # price
         for i,j,t,d,p in scenario.tripAttr: # trip attribute (origin, destination, time of request, demand, price)
-            if d <1e-3:
-                continue
             self.demand[i,j][t] = d
-            self.price[i,j][t] = p 
+            self.price[i,j][t] = p
             self.depDemand[i][t] += d
             self.arrDemand[i][t+self.demandTime[i,j][t]] += d
         self.acc = defaultdict(dict) # number of vehicles within each region, key: i - region, t - time
@@ -52,6 +50,7 @@ class AMoD:
         self.edges = list(set(self.edges))
         self.nedge = [len(self.G.out_edges(n))+1 for n in self.region] # number of edges leaving each region        
         for i,j in self.G.edges:
+            self.G.edges[i,j]['time'] = self.rebTime[i,j][self.time]
             self.rebFlow[i,j] = defaultdict(float)
         for i,j in self.demand:
             self.paxFlow[i,j] = defaultdict(float)            
@@ -75,7 +74,7 @@ class AMoD:
     def matching(self, CPLEXPATH=None, PATH='', platform = 'linux'):
         t = self.time
         demandAttr = [(i,j,self.demand[i,j][t], self.price[i,j][t]) for i,j in self.demand \
-                      if self.demand[i,j][t]>1e-3]
+                      if t in self.demand[i,j] and self.demand[i,j][t]>1e-3]
         accTuple = [(n,self.acc[n][t+1]) for n in self.acc]
         modPath = os.getcwd().replace('\\','/')+'/mod/'
         matchingPath = os.getcwd().replace('\\','/')+'/matching/'+PATH
@@ -161,12 +160,12 @@ class AMoD:
             # TODO: add check for actions respecting constraints? e.g. sum of all action[k] starting in "i" <= self.acc[i][t+1] (in addition to our agent action method)
             # update the number of vehicles
             self.rebAction[k] = min(self.acc[i][t+1], rebAction[k]) 
-            self.rebFlow[i,j][t+self.rebTime[i,j]] = self.rebAction[k]     
+            self.rebFlow[i,j][t+self.rebTime[i,j][t]] = self.rebAction[k]       
             self.acc[i][t+1] -= self.rebAction[k] 
-            self.dacc[j][t+self.rebTime[i,j]] += self.rebFlow[i,j][t+self.rebTime[i,j]]   
-            self.info['rebalancing_cost'] += self.rebTime[i,j]*self.beta*self.rebAction[k]
-            self.info["operating_cost"] += self.rebTime[i,j]*self.beta*self.rebAction[k]
-            self.reward -= self.rebTime[i,j]*self.beta*self.rebAction[k]
+            self.dacc[j][t+self.rebTime[i,j][t]] += self.rebFlow[i,j][t+self.rebTime[i,j][t]]   
+            self.info['rebalancing_cost'] += self.rebTime[i,j][t]*self.beta*self.rebAction[k]
+            self.info["operating_cost"] += self.rebTime[i,j][t]*self.beta*self.rebAction[k]
+            self.reward -= self.rebTime[i,j][t]*self.beta*self.rebAction[k]
         # arrival for the next time step, executed in the last state of a time step
         # this makes the code slightly different from the previous version, where the following codes are executed between matching and rebalancing        
         for k in range(len(self.edges)):
@@ -178,7 +177,8 @@ class AMoD:
             
         self.time += 1
         self.obs = (self.acc, self.time, self.dacc, self.demand) # use self.time to index the next time step
-        
+        for i,j in self.G.edges:
+            self.G.edges[i,j]['time'] = self.rebTime[i,j][self.time]
         done = (self.tf == t+1) # if the episode is completed
         return self.obs, self.reward, done, self.info
     
@@ -225,7 +225,7 @@ class AMoD:
     
 class Scenario:
     def __init__(self, N1=2, N2=4, tf=60, sd=None, ninit=5, tripAttr=None, demand_input=None, demand_ratio = None,
-                 trip_length_preference = 0.25, grid_travel_time = 1, fix_price=False, alpha = 0.2, json_file = None, json_hr = 9, json_tstep = 2, json_regions = None):
+                 trip_length_preference = 0.25, grid_travel_time = 1, fix_price=True, alpha = 0.2, json_file = None, json_hr = 9, json_tstep = 2, varying_time=False, json_regions = None):
         # trip_length_preference: positive - more shorter trips, negative - more longer trips
         # grid_travel_time: travel time between grids
         # demand_input： list - total demand out of each region, 
@@ -250,9 +250,10 @@ class Scenario:
             self.G = self.G.to_directed()
             self.demandTime = dict()
             self.rebTime = dict()
-            for i,j in self.G.edges:
+            self.edges = list(self.G.edges) + [(i,i) for i in self.G.nodes]
+            for i,j in self.edges:
                 self.demandTime[i,j] = defaultdict(lambda:(abs(i//N1-j//N1) + abs(i%N1-j%N1))*grid_travel_time)
-                self.rebTime[i,j] = (abs(i//N1-j//N1) + abs(i%N1-j%N1))*grid_travel_time
+                self.rebTime[i,j] = defaultdict(lambda:(abs(i//N1-j//N1) + abs(i%N1-j%N1))*grid_travel_time)
             
             for n in self.G.nodes:
                 self.G.nodes[n]['accInit'] = int(ninit)
@@ -260,21 +261,21 @@ class Scenario:
             self.demand_ratio = defaultdict(list)
             
             if demand_ratio == None or type(demand_ratio) == list:            
-                for i,j in self.G.edges:
+                for i,j in self.edges:
                     if type(demand_ratio) == list:
-                        self.demand_ratio[i,j] = list(np.interp(range(0,tf), np.arange(0,tf+1, tf/(len(demand_ratio)-1)), demand_ratio))+[1]*tf
+                        self.demand_ratio[i,j] = list(np.interp(range(0,tf), np.arange(0,tf+1, tf/(len(demand_ratio)-1)), demand_ratio))+[demand_ratio[-1]]*tf
                     else:
                         self.demand_ratio[i,j] = [1]*(tf+tf)
             else:
-                for i,j in self.G.edges:
+                for i,j in self.edges:
                     if (i,j) in demand_ratio:
                         self.demand_ratio[i,j] = list(np.interp(range(0,tf), np.arange(0,tf+1, tf/(len(demand_ratio[i,j])-1)), demand_ratio[i,j]))+[1]*tf
                     else:
                         self.demand_ratio[i,j] = list(np.interp(range(0,tf), np.arange(0,tf+1, tf/(len(demand_ratio['default'])-1)), demand_ratio['default']))+[1]*tf
             if self.fix_price: # fix price
                 self.p = defaultdict(dict)
-                for i,j in self.G.edges:
-                    self.p[i,j] = (np.random.rand()*2+1)*self.G.edges[i,j]['time']
+                for i,j in self.edges:
+                    self.p[i,j] = (np.random.rand()*2+1)*(self.demandTime[i,j][0]+1)
             if tripAttr != None: # given demand as a defaultdict(dict)
                 self.tripAttr = deepcopy(tripAttr)
             else:
@@ -301,7 +302,7 @@ class Scenario:
             self.p = defaultdict(dict)
             self.alpha = 0
             self.demandTime = defaultdict(dict)
-            self.rebTime = dict()
+            self.rebTime = defaultdict(dict)
             self.json_start = json_hr * 60
             self.tf = tf
             
@@ -332,8 +333,15 @@ class Scenario:
                 hr,o,d,rt = item["time_stamp"], item["origin"], item["destination"], item["reb_time"]
                 if json_regions!= None and (o not in json_regions or d not in json_regions):
                     continue
-                if hr == json_hr:
-                    self.rebTime[o,d] = int(round(rt/json_tstep))
+                if varying_time:
+                    t0 = int((hr*60 - self.json_start)//json_tstep)
+                    t1 = int((hr*60 + 60 - self.json_start)//json_tstep)
+                    for t in range(t0,t1):
+                        self.rebTime[o,d][t] = int(round(rt/json_tstep))
+                else:
+                    if hr == json_hr:
+                        for t in range(0,tf+1):
+                            self.rebTime[o,d][t] = int(round(rt/json_tstep))
             
             for item in data["totalAcc"]:
                 hr, acc = item["hour"], item["acc"]
@@ -380,12 +388,12 @@ class Scenario:
                     self.region_demand = region_rand * np.array(self.demand_input)
                 for i in self.G.nodes:
                     J = [j for _,j in self.G.out_edges(i)]
-                    prob = np.array([np.math.exp(-self.G.edges[i,j]['time']*self.trip_length_preference) for j in J])
+                    prob = np.array([np.math.exp(-self.rebTime[i,j][0]*self.trip_length_preference) for j in J])
                     prob = prob/sum(prob)
                     for idx in range(len(J)):
                         self.static_demand[i,J[idx]] = self.region_demand[i] * prob[idx]
             elif type(self.demand_input) in [dict, defaultdict]:
-                for i,j in self.G.edges:
+                for i,j in self.edges:
                     self.static_demand[i,j] = self.demand_input[i,j] if (i,j) in self.demand_input else self.demand_input['default']
                     
                     self.static_demand[i,j] *= region_rand[i]
@@ -395,13 +403,13 @@ class Scenario:
             # generating demand and prices
             if self.fix_price:
                 p = self.p
-            for i,j in self.G.edges:
+            for i,j in self.edges:
                 for t in range(0,self.tf*2):
                     demand[i,j][t] = np.random.poisson(self.static_demand[i,j]*self.demand_ratio[i,j][t])
                     if self.fix_price:
                         price[i,j][t] = p[i,j]
                     else:
-                        price[i,j][t] = min(3,np.random.exponential(2)+1)*self.G.edges[i,j]['time']
+                        price[i,j][t] = min(3,np.random.exponential(2)+1)*self.demandTime[i,j][t]
                     tripAttr.append((i,j,t,demand[i,j][t],price[i,j][t]))
 
         return tripAttr
