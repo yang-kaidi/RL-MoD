@@ -57,7 +57,7 @@ class AMoD:
         for n in self.region:
             self.acc[n][0] = self.G.nodes[n]['accInit']
             self.dacc[n] = defaultdict(float)   
-        self.beta = beta
+        self.beta = beta * scenario.tstep
         t = self.time
         self.servedDemand = defaultdict(dict)
         for i,j in self.demand:
@@ -172,8 +172,10 @@ class AMoD:
             i,j = self.edges[k]    
             if (i,j) not in self.G.edges:
                 continue
-            self.acc[j][t+1] += self.rebFlow[i,j][t]
-            self.acc[j][t+1] += self.paxFlow[i,j][t] # this means that after pax arrived, vehicles can only be rebalanced in the next time step, let me know if you have different opinion
+            if (i,j) in self.rebFlow and t in self.rebFlow[i,j]:
+                self.acc[j][t+1] += self.rebFlow[i,j][t]
+            if (i,j) in self.paxFlow and t in self.paxFlow[i,j]:
+                self.acc[j][t+1] += self.paxFlow[i,j][t] # this means that after pax arrived, vehicles can only be rebalanced in the next time step, let me know if you have different opinion
             
         self.time += 1
         self.obs = (self.acc, self.time, self.dacc, self.demand) # use self.time to index the next time step
@@ -238,6 +240,7 @@ class Scenario:
         if sd != None:
             np.random.seed(self.sd)
         if json_file == None:    
+            self.varying_time = varying_time
             self.is_json = False
             self.alpha = alpha
             self.trip_length_preference = trip_length_preference
@@ -283,6 +286,7 @@ class Scenario:
             
         
         else:
+            self.varying_time = varying_time
             self.is_json = True
             with open(json_file,"r") as file:
                 data = json.load(file)
@@ -337,11 +341,11 @@ class Scenario:
                     t0 = int((hr*60 - self.json_start)//json_tstep)
                     t1 = int((hr*60 + 60 - self.json_start)//json_tstep)
                     for t in range(t0,t1):
-                        self.rebTime[o,d][t] = int(round(rt/json_tstep))
+                        self.rebTime[o,d][t] = max(int(round(rt/json_tstep)),1)
                 else:
                     if hr == json_hr:
                         for t in range(0,tf+1):
-                            self.rebTime[o,d][t] = int(round(rt/json_tstep))
+                            self.rebTime[o,d][t] = max(int(round(rt/json_tstep)),1)
             
             for item in data["totalAcc"]:
                 hr, acc = item["hour"], item["acc"]
