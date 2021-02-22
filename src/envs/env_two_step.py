@@ -309,7 +309,7 @@ class Scenario:
             self.rebTime = defaultdict(dict)
             self.json_start = json_hr * 60
             self.tf = tf
-            
+            self.edges = list(self.G.edges) + [(i,i) for i in self.G.nodes]
 
                     
             for i,j in self.demand_input:
@@ -349,7 +349,7 @@ class Scenario:
             
             for item in data["totalAcc"]:
                 hr, acc = item["hour"], item["acc"]
-                if hr == json_hr+int(round(json_tstep/2)):
+                if hr == json_hr+int(round(json_tstep/2*tf/60)):
                     for n in self.G.nodes:
                         self.G.nodes[n]['accInit'] = int(acc/len(self.G))
             self.tripAttr = self.get_random_demand()
@@ -372,8 +372,8 @@ class Scenario:
         # skip this when resetting the demand
         # if not reset:
         if self.is_json:
-            for i,j in self.demand_input:
-                for t in range(0,self.tf*2):
+            for t in range(0,self.tf*2):
+                for i,j in self.edges:                
                     if (i,j) in self.demand_input and t  in self.demand_input[i,j]:
                         demand[i,j][t] = np.random.poisson(self.demand_input[i,j][t])
                         price[i,j][t] = self.p[i,j][t]
@@ -407,8 +407,8 @@ class Scenario:
             # generating demand and prices
             if self.fix_price:
                 p = self.p
-            for i,j in self.edges:
-                for t in range(0,self.tf*2):
+            for t in range(0,self.tf*2):
+                for i,j in self.edges:                
                     demand[i,j][t] = np.random.poisson(self.static_demand[i,j]*self.demand_ratio[i,j][t])
                     if self.fix_price:
                         price[i,j][t] = p[i,j]
