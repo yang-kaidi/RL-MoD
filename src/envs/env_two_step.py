@@ -327,11 +327,17 @@ class Scenario:
                 self.p[o,d][(t-self.json_start)//json_tstep] += p*v*demand_ratio
                 self.demandTime[o,d][(t-self.json_start)//json_tstep] += tt*v*demand_ratio/json_tstep
             
-            for o,d in self.demand_input:
-                for t in self.demand_input[o,d]:
-                    self.p[o,d][t] /= self.demand_input[o,d][t]                    
-                    self.demandTime[o,d][t] /= self.demand_input[o,d][t]
-                    self.demandTime[o,d][t] = max(int(round(self.demandTime[o,d][t])),1)
+            
+            for o,d in self.edges:
+                for t in range(0,tf*2):
+                    if t in self.demand_input[o,d]:
+                        self.p[o,d][t] /= self.demand_input[o,d][t]                    
+                        self.demandTime[o,d][t] /= self.demand_input[o,d][t]
+                        self.demandTime[o,d][t] = max(int(round(self.demandTime[o,d][t])),1)
+                    else:
+                        self.demand_input[o,d][t] = 0
+                        self.p[o,d][t] = 0
+                        self.demandTime[o,d][t] = 0
             
             for item in data["rebTime"]:
                 hr,o,d,rt = item["time_stamp"], item["origin"], item["destination"], item["reb_time"]
