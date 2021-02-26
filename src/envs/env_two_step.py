@@ -170,8 +170,6 @@ class AMoD:
         # this makes the code slightly different from the previous version, where the following codes are executed between matching and rebalancing        
         for k in range(len(self.edges)):
             i,j = self.edges[k]    
-            if (i,j) not in self.G.edges:
-                continue
             if (i,j) in self.rebFlow and t in self.rebFlow[i,j]:
                 self.acc[j][t+1] += self.rebFlow[i,j][t]
             if (i,j) in self.paxFlow and t in self.paxFlow[i,j]:
